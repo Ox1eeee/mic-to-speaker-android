@@ -1,7 +1,6 @@
 package com.bluetooth.bluetoothmictospeaker.audio
 
 import kotlin.math.abs
-import kotlin.math.log2
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -17,7 +16,6 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
     private val mainPitchAccum = DoubleArray(1)       // Chipmunk, DeepVoice
     private val alienPitchAccum = DoubleArray(1)      // Alien
     private val princessPitchAccum = DoubleArray(1)   // Princess main pitch
-    private val autotuneEffect = AutotuneEffect(sampleRate)
 
     // Robot effect state
     private var robotPhase = 0.0
@@ -111,7 +109,6 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
             is VoiceEffect.Alien -> applyAlien(buffer, size)
             is VoiceEffect.Radio -> applyRadio(buffer, size)
             is VoiceEffect.Princess -> applyPrincess(buffer, size)
-            is VoiceEffect.Autotune -> applyAutotune(buffer, size)
             is VoiceEffect.Helium -> applyPitchShift(buffer, size, 1.8f, mainPitchAccum)
             is VoiceEffect.Monster -> applyMonster(buffer, size)
             is VoiceEffect.Telephone -> applyTelephone(buffer, size)
@@ -177,7 +174,6 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
         for (i in stadiumEarlyBuffers.indices) { stadiumEarlyBuffers[i].fill(0f); stadiumEarlyIndices[i] = 0 }
         stadiumLateBuffer = FloatArray(sampleRate * 3)
         stadiumLateIndex = 0
-        autotuneEffect.reset()
     }
 
     // --- Pitch Shift (resampling with linear interpolation + crossfade) ---
@@ -1035,11 +1031,4 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
         return output
     }
 
-    // =============================================
-    // Autotune Effect — Instagram / T-Pain style
-    // =============================================
-
-    private fun applyAutotune(buffer: ShortArray, size: Int): ShortArray {
-        return autotuneEffect.process(buffer, size)
-    }
 }
