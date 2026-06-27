@@ -26,12 +26,18 @@ sealed class VoiceEffect(val displayName: String, val iconName: String, val isFr
     data object Astronaut : VoiceEffect("Space", "rocket_launch", false)
     data object EightBit : VoiceEffect("8-Bit", "videogame_asset", false)
     data object Stadium : VoiceEffect("Stadium", "stadium", false)
+    data object GenderSwap : VoiceEffect("Gender", "swap_horiz", false)
+    data object Vocoder : VoiceEffect("Vocoder", "graphic_eq", false)
+    data object Choir : VoiceEffect("Choir", "groups", false)
 
     companion object {
         fun all(): List<VoiceEffect> = listOf(
             None, Robot, Chipmunk, DeepVoice, Echo, Alien, Radio, Princess,
             Helium, Monster, Telephone, Underwater, Megaphone, Baby, WalkieTalkie, Drunk, Zombie, Giant,
-            Cave, Ghost, DarthVader, OldMan, Astronaut, EightBit, Stadium
+            Cave, Ghost, DarthVader, OldMan, Astronaut, EightBit, Stadium,
+            GenderSwap, Vocoder, Choir
         )
+
+        fun nativeId(effect: VoiceEffect): Int = all().indexOf(effect)
     }
 }

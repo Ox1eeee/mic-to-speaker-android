@@ -87,7 +87,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                     if (audioEngine.setup()) {
                         audioEngine.volume = _uiState.value.volume
                         audioEngine.currentEffect = _uiState.value.currentEffect
-                        audioEngine.effectProcessor.echoMix = _uiState.value.echoMix
+                        audioEngine.echoMix = _uiState.value.echoMix
                         audioEngine.start()
                         _uiState.value = _uiState.value.copy(isRunning = true)
                     }
@@ -102,7 +102,6 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setEffect(effect: VoiceEffect) {
         audioEngine.currentEffect = effect
-        audioEngine.effectProcessor.reset()
         _uiState.value = _uiState.value.copy(currentEffect = effect)
 
         // Save preference
@@ -118,7 +117,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setEchoMix(mix: Float) {
-        audioEngine.effectProcessor.echoMix = mix
+        audioEngine.echoMix = mix
         _uiState.value = _uiState.value.copy(echoMix = mix)
     }
 

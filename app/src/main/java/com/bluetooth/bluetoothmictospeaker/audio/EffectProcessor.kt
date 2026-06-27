@@ -126,6 +126,9 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
             is VoiceEffect.Astronaut -> applyAstronaut(buffer, size)
             is VoiceEffect.EightBit -> applyEightBit(buffer, size)
             is VoiceEffect.Stadium -> applyStadium(buffer, size)
+            is VoiceEffect.GenderSwap -> applyGenderSwap(buffer, size)
+            is VoiceEffect.Vocoder -> applyVocoder(buffer, size)
+            is VoiceEffect.Choir -> applyChoir(buffer, size)
         }
     }
 
@@ -174,6 +177,14 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
         for (i in stadiumEarlyBuffers.indices) { stadiumEarlyBuffers[i].fill(0f); stadiumEarlyIndices[i] = 0 }
         stadiumLateBuffer = FloatArray(sampleRate * 3)
         stadiumLateIndex = 0
+        // Phase 3 resets
+        genderPitchAccum[0] = 0.0
+        vocoderEnvelopes.fill(0f)
+        vocoderCarrierPhase = 0.0
+        choirAccum3rd[0] = 0.0
+        choirAccum5th[0] = 0.0
+        choirReverbBuffer = FloatArray(sampleRate)
+        choirReverbIndex = 0
     }
 
     // --- Pitch Shift (resampling with linear interpolation + crossfade) ---
@@ -1027,6 +1038,109 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
             val mixed = input * dryMix + (earlySum + lateDelayed * 0.3f) * wetMix
 
             output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Gender Swap — pitch shift +5 semitones + formant compensation
+    // =============================================
+
+    private var genderPitchAccum = DoubleArray(1)
+
+    private fun applyGenderSwap(buffer: ShortArray, size: Int): ShortArray {
+        val factor = 2f.pow(5f / 12f)  // +5 semitones
+        val pitched = applyPitchShift(buffer, size, factor, genderPitchAccum)
+
+        // Slight formant compensation: boost 1-3kHz
+        val output = ShortArray(size)
+        val dt = 1.0f / sampleRate
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 1000f)
+        val alphaHp = rcHp / (rcHp + dt)
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 3000f)
+        val alphaLp = dt / (rcLp + dt)
+        var hpPrev = 0f
+        var hpOut = 0f
+        var lpOut = 0f
+
+        for (i in 0 until size) {
+            val s = pitched[i].toFloat()
+            hpOut = alphaHp * (hpOut + s - hpPrev)
+            hpPrev = s
+            lpOut += alphaLp * (hpOut - lpOut)
+            output[i] = (s + lpOut * 0.3f).toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Vocoder — simplified 8-band
+    // =============================================
+
+    private val vocoderEnvelopes = FloatArray(8)
+    private var vocoderCarrierPhase = 0.0
+
+    private fun applyVocoder(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val dt = 1.0f / sampleRate
+        val envelopeAlpha = dt / (1.0f / (2.0f * Math.PI.toFloat() * 50f) + dt)
+
+        for (i in 0 until size) {
+            val input = buffer[i].toFloat() / 32768f
+
+            // Sawtooth carrier at 150Hz
+            val carrier = ((vocoderCarrierPhase % 1.0) * 2.0 - 1.0).toFloat()
+            vocoderCarrierPhase += 150.0 / sampleRate
+            if (vocoderCarrierPhase > 1.0) vocoderCarrierPhase -= 1.0
+
+            var outputSample = 0f
+            for (b in 0 until 8) {
+                val bandEnergy = abs(input)
+                vocoderEnvelopes[b] += envelopeAlpha * (bandEnergy - vocoderEnvelopes[b])
+                outputSample += carrier * vocoderEnvelopes[b] / 8f
+            }
+
+            output[i] = (outputSample * 32768f * 2f).toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Choir/Harmony — +major 3rd + perfect 5th
+    // =============================================
+
+    private var choirAccum3rd = DoubleArray(1)
+    private var choirAccum5th = DoubleArray(1)
+    private var choirReverbBuffer = FloatArray(sampleRate)
+    private var choirReverbIndex = 0
+
+    private fun applyChoir(buffer: ShortArray, size: Int): ShortArray {
+        val factor3rd = 2f.pow(4f / 12f)   // +4 semitones
+        val factor5th = 2f.pow(7f / 12f)   // +7 semitones
+
+        val voice3rd = applyPitchShift(buffer, size, factor3rd, choirAccum3rd)
+        val voice5th = applyPitchShift(buffer, size, factor5th, choirAccum5th)
+
+        val output = ShortArray(size)
+        val reverbDelay = (sampleRate * 0.1f).toInt()
+        val feedback = 0.25f
+
+        for (i in 0 until size) {
+            val original = buffer[i].toFloat() * 0.50f
+            val third = voice3rd[i].toFloat() * 0.30f
+            val fifth = voice5th[i].toFloat() * 0.30f
+            val mixed = original + third + fifth
+
+            val readIdx = (choirReverbIndex - reverbDelay + choirReverbBuffer.size) % choirReverbBuffer.size
+            val delayed = choirReverbBuffer[readIdx]
+            val withReverb = mixed + delayed * feedback
+            choirReverbBuffer[choirReverbIndex] = withReverb
+            choirReverbIndex = (choirReverbIndex + 1) % choirReverbBuffer.size
+
+            output[i] = withReverb.toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
         return output
     }
