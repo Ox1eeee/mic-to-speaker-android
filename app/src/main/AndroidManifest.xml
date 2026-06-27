@@ -9,14 +9,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Keep audio running in background -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-
-    <!-- Internet for billing -->
+    <!-- Internet for RevenueCat -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".MicSpeakerApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -25,6 +22,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BluetoothMicToSpeaker">
+        <!-- AdMob App ID (replace with your real App ID before release) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9136368944341050~9663871328" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -36,11 +38,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <service
-            android:name=".audio.AudioForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
     </application>
 
 </manifest>
