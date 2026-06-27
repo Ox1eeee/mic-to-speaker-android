@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1098373525353",
+    "project_id": "bluetooth-mic-86cad",
+    "storage_bucket": "bluetooth-mic-86cad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1098373525353:android:22d9958261ecdabef917f8",
+        "android_client_info": {
+          "package_name": "com.bluetooth.bluetoothmictospeaker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALw8xj5B-LxoMG65Y7oLeqw6pJCnvp-4g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
