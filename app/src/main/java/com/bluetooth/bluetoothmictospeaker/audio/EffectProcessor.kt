@@ -37,6 +37,65 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
     private var shimmerBuffer = FloatArray(sampleRate)
     private var shimmerWriteIndex = 0
 
+    // Underwater LFO state
+    private var underwaterPhase = 0.0
+
+    // Drunk wobble state
+    private var drunkPhase = 0.0
+    private var drunkPitchAccum = DoubleArray(1)
+
+    // Giant effect accumulator
+    private var giantPitchAccum = DoubleArray(1)
+
+    // Monster reverb buffer
+    private var monsterReverbBuffer = FloatArray(sampleRate)
+    private var monsterReverbIndex = 0
+
+    // Zombie reverb buffer
+    private var zombieReverbBuffer = FloatArray(sampleRate)
+    private var zombieReverbIndex = 0
+
+    // Cave/Cathedral Schroeder reverb — 4 comb filters + 2 allpass filters
+    private val combDelays = intArrayOf(1116, 1188, 1277, 1356)
+    private val combBuffers = Array(4) { FloatArray(combDelays[it] + 1) }
+    private val combIndices = IntArray(4)
+    private val allpassDelays = intArrayOf(225, 556)
+    private val allpassBuffers = Array(2) { FloatArray(allpassDelays[it] + 1) }
+    private val allpassIndices = IntArray(2)
+
+    // Ghost whisper state
+    private var ghostPitchAccum = DoubleArray(1)
+    private var ghostReverbBuffer = FloatArray(sampleRate * 2)  // 2s for long reverb
+    private var ghostReverbIndex = 0
+
+    // Darth Vader state
+    private var vaderPitchAccum = DoubleArray(1)
+    private var vaderRingPhase = 0.0
+    private var vaderReverbBuffer = FloatArray(sampleRate)
+    private var vaderReverbIndex = 0
+
+    // Old Man state
+    private var oldManPitchAccum = DoubleArray(1)
+    private var oldManTremoloPhase = 0.0
+
+    // Astronaut/Space state
+    private var astronautFlangerBuffer = FloatArray(sampleRate)
+    private var astronautFlangerIndex = 0
+    private var astronautFlangerPhase = 0.0
+    private var astronautReverbBuffer = FloatArray(sampleRate * 2)
+    private var astronautReverbIndex = 0
+
+    // 8-Bit state
+    private var eightBitHoldSample: Short = 0
+    private var eightBitHoldCounter = 0
+
+    // Stadium reverb — long decay with early reflections
+    private val stadiumEarlyDelays = intArrayOf(882, 1984, 2955)  // 20ms, 45ms, 67ms at 44100
+    private val stadiumEarlyBuffers = Array(3) { FloatArray(stadiumEarlyDelays[it] + 1) }
+    private val stadiumEarlyIndices = IntArray(3)
+    private var stadiumLateBuffer = FloatArray(sampleRate * 3)  // 3s for very long reverb
+    private var stadiumLateIndex = 0
+
     var echoMix: Float = 0.3f
 
     // Crossfade length in samples for pitch shift buffer edges
@@ -53,6 +112,23 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
             is VoiceEffect.Radio -> applyRadio(buffer, size)
             is VoiceEffect.Princess -> applyPrincess(buffer, size)
             is VoiceEffect.Autotune -> applyAutotune(buffer, size)
+            is VoiceEffect.Helium -> applyPitchShift(buffer, size, 1.8f, mainPitchAccum)
+            is VoiceEffect.Monster -> applyMonster(buffer, size)
+            is VoiceEffect.Telephone -> applyTelephone(buffer, size)
+            is VoiceEffect.Underwater -> applyUnderwater(buffer, size)
+            is VoiceEffect.Megaphone -> applyMegaphone(buffer, size)
+            is VoiceEffect.Baby -> applyPitchShift(buffer, size, 1.5f, mainPitchAccum)
+            is VoiceEffect.WalkieTalkie -> applyWalkieTalkie(buffer, size)
+            is VoiceEffect.Drunk -> applyDrunk(buffer, size)
+            is VoiceEffect.Zombie -> applyZombie(buffer, size)
+            is VoiceEffect.Giant -> applyGiant(buffer, size)
+            is VoiceEffect.Cave -> applyCave(buffer, size)
+            is VoiceEffect.Ghost -> applyGhost(buffer, size)
+            is VoiceEffect.DarthVader -> applyDarthVader(buffer, size)
+            is VoiceEffect.OldMan -> applyOldMan(buffer, size)
+            is VoiceEffect.Astronaut -> applyAstronaut(buffer, size)
+            is VoiceEffect.EightBit -> applyEightBit(buffer, size)
+            is VoiceEffect.Stadium -> applyStadium(buffer, size)
         }
     }
 
@@ -71,6 +147,36 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
         chorusPhase = 0.0
         shimmerBuffer = FloatArray(sampleRate)
         shimmerWriteIndex = 0
+        underwaterPhase = 0.0
+        drunkPhase = 0.0
+        drunkPitchAccum[0] = 0.0
+        giantPitchAccum[0] = 0.0
+        monsterReverbBuffer = FloatArray(sampleRate)
+        monsterReverbIndex = 0
+        zombieReverbBuffer = FloatArray(sampleRate)
+        zombieReverbIndex = 0
+        // Phase 2 resets
+        for (i in combBuffers.indices) { combBuffers[i].fill(0f); combIndices[i] = 0 }
+        for (i in allpassBuffers.indices) { allpassBuffers[i].fill(0f); allpassIndices[i] = 0 }
+        ghostPitchAccum[0] = 0.0
+        ghostReverbBuffer = FloatArray(sampleRate * 2)
+        ghostReverbIndex = 0
+        vaderPitchAccum[0] = 0.0
+        vaderRingPhase = 0.0
+        vaderReverbBuffer = FloatArray(sampleRate)
+        vaderReverbIndex = 0
+        oldManPitchAccum[0] = 0.0
+        oldManTremoloPhase = 0.0
+        astronautFlangerBuffer = FloatArray(sampleRate)
+        astronautFlangerIndex = 0
+        astronautFlangerPhase = 0.0
+        astronautReverbBuffer = FloatArray(sampleRate * 2)
+        astronautReverbIndex = 0
+        eightBitHoldSample = 0
+        eightBitHoldCounter = 0
+        for (i in stadiumEarlyBuffers.indices) { stadiumEarlyBuffers[i].fill(0f); stadiumEarlyIndices[i] = 0 }
+        stadiumLateBuffer = FloatArray(sampleRate * 3)
+        stadiumLateIndex = 0
         autotuneEffect.reset()
     }
 
@@ -312,6 +418,619 @@ class EffectProcessor(private val sampleRate: Int = 44100) {
 
             output[i] = mixed.toInt()
                 .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Monster/Demon — Pitch down + distortion + short reverb
+    // =============================================
+
+    private fun applyMonster(buffer: ShortArray, size: Int): ShortArray {
+        // Step 1: Pitch shift down
+        val pitched = applyPitchShift(buffer, size, 0.5f, mainPitchAccum)
+
+        // Step 2: Soft clip distortion + short reverb
+        val output = ShortArray(size)
+        val delaySamples = (sampleRate * 0.08f).toInt()  // 80ms reverb
+        val feedback = 0.3f
+
+        for (i in 0 until size) {
+            val sample = pitched[i].toFloat()
+
+            // Soft distortion: tanh approximation
+            val gained = sample * 2.0f / 32768f
+            val distorted = (gained / (1f + abs(gained))) * 32768f
+
+            // Short reverb
+            val readIdx = (monsterReverbIndex - delaySamples + monsterReverbBuffer.size) % monsterReverbBuffer.size
+            val delayed = monsterReverbBuffer[readIdx]
+            val mixed = distorted + delayed * feedback
+            monsterReverbBuffer[monsterReverbIndex] = mixed
+            monsterReverbIndex = (monsterReverbIndex + 1) % monsterReverbBuffer.size
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Telephone — Band-pass (300-3400Hz) + saturation
+    // =============================================
+
+    private fun applyTelephone(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val dt = 1.0f / sampleRate
+
+        // High-pass at 300Hz
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 300f)
+        val alphaHp = rcHp / (rcHp + dt)
+
+        // Low-pass at 3400Hz
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 3400f)
+        val alphaLp = dt / (rcLp + dt)
+
+        var hpPrev = 0f
+        var hpOut = 0f
+        var lpOut = 0f
+
+        for (i in 0 until size) {
+            val sample = buffer[i].toFloat()
+
+            // High-pass
+            hpOut = alphaHp * (hpOut + sample - hpPrev)
+            hpPrev = sample
+
+            // Low-pass
+            lpOut += alphaLp * (hpOut - lpOut)
+
+            // Saturation + bit reduction for phone crunch
+            val gained = lpOut * 2.0f
+            val saturated = gained / (1f + abs(gained / 25000f))
+            val crushed = (saturated.toInt() / 64 * 64).toFloat()  // Slight bit crush
+
+            output[i] = crushed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Underwater — Low-pass filter + LFO wobble
+    // =============================================
+
+    private fun applyUnderwater(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val lfoRate = 0.5  // Hz — slow wobble
+        val lfoPhaseInc = 2.0 * Math.PI * lfoRate / sampleRate
+
+        var lpOut = 0f
+
+        for (i in 0 until size) {
+            val sample = buffer[i].toFloat()
+
+            // LFO modulates cutoff between 300-700Hz
+            val lfo = sin(underwaterPhase).toFloat()
+            val cutoff = 500f + lfo * 200f
+            val rc = 1.0f / (2.0f * Math.PI.toFloat() * cutoff)
+            val dt = 1.0f / sampleRate
+            val alpha = dt / (rc + dt)
+
+            // Low-pass filter
+            lpOut += alpha * (sample - lpOut)
+
+            // Slight volume reduction for muffled feel
+            val muffled = lpOut * 0.7f
+
+            underwaterPhase += lfoPhaseInc
+            if (underwaterPhase > 2.0 * Math.PI) underwaterPhase -= 2.0 * Math.PI
+
+            output[i] = muffled.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Megaphone — Band-pass (500-4000Hz) + hard distortion
+    // =============================================
+
+    private fun applyMegaphone(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val dt = 1.0f / sampleRate
+
+        // High-pass at 500Hz
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 500f)
+        val alphaHp = rcHp / (rcHp + dt)
+
+        // Low-pass at 4000Hz
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 4000f)
+        val alphaLp = dt / (rcLp + dt)
+
+        var hpPrev = 0f
+        var hpOut = 0f
+        var lpOut = 0f
+
+        for (i in 0 until size) {
+            val sample = buffer[i].toFloat()
+
+            // High-pass
+            hpOut = alphaHp * (hpOut + sample - hpPrev)
+            hpPrev = sample
+
+            // Low-pass
+            lpOut += alphaLp * (hpOut - lpOut)
+
+            // Hard clip distortion — aggressive
+            val gained = lpOut * 3.0f
+            val clipped = gained.coerceIn(-22000f, 22000f)
+
+            output[i] = clipped.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Walkie-Talkie — Narrow band-pass + noise + distortion
+    // =============================================
+
+    private fun applyWalkieTalkie(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val dt = 1.0f / sampleRate
+
+        // Narrow band-pass: 1000-3000Hz
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 1000f)
+        val alphaHp = rcHp / (rcHp + dt)
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 3000f)
+        val alphaLp = dt / (rcLp + dt)
+
+        var hpPrev = 0f
+        var hpOut = 0f
+        var lpOut = 0f
+
+        for (i in 0 until size) {
+            val sample = buffer[i].toFloat()
+
+            // High-pass
+            hpOut = alphaHp * (hpOut + sample - hpPrev)
+            hpPrev = sample
+
+            // Low-pass
+            lpOut += alphaLp * (hpOut - lpOut)
+
+            // Add noise
+            val noise = (Math.random().toFloat() - 0.5f) * 800f
+
+            // Soft distortion
+            val gained = (lpOut + noise) * 2.0f
+            val distorted = gained / (1f + abs(gained / 20000f))
+
+            // Downsample effect (hold every 2nd sample)
+            val crushed = if (i % 2 == 0) distorted else output.getOrNull(i - 1)?.toFloat() ?: distorted
+
+            output[i] = crushed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Drunk — Slow pitch wobble via LFO
+    // =============================================
+
+    private fun applyDrunk(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val lfoRate = 0.3  // Hz — very slow wobble
+        val lfoPhaseInc = 2.0 * Math.PI * lfoRate / sampleRate
+        val wobbleDepth = 0.05f  // ±5% pitch variation
+
+        for (i in 0 until size) {
+            // LFO modulates pitch factor between 0.95 - 1.05
+            val lfo = sin(drunkPhase).toFloat()
+            val factor = 1.0f + lfo * wobbleDepth
+
+            val srcIndex = drunkPitchAccum[0]
+            val srcIndexInt = srcIndex.toInt()
+            val frac = (srcIndex - srcIndexInt).toFloat()
+
+            if (srcIndexInt >= 0 && srcIndexInt < size - 1) {
+                val sample = buffer[srcIndexInt] * (1f - frac) + buffer[srcIndexInt + 1] * frac
+                output[i] = sample.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+            } else if (srcIndexInt >= 0 && srcIndexInt < size) {
+                output[i] = buffer[srcIndexInt]
+            } else {
+                output[i] = 0
+            }
+
+            drunkPitchAccum[0] += factor
+            if (drunkPitchAccum[0] >= size) {
+                drunkPitchAccum[0] -= size
+            }
+
+            drunkPhase += lfoPhaseInc
+            if (drunkPhase > 2.0 * Math.PI) drunkPhase -= 2.0 * Math.PI
+        }
+        return output
+    }
+
+    // =============================================
+    // Zombie — Pitch down + growl distortion + reverb
+    // =============================================
+
+    private fun applyZombie(buffer: ShortArray, size: Int): ShortArray {
+        // Step 1: Pitch shift down
+        val pitched = applyPitchShift(buffer, size, 0.7f, mainPitchAccum)
+
+        // Step 2: Asymmetric distortion (growl) + medium reverb
+        val output = ShortArray(size)
+        val delaySamples = (sampleRate * 0.15f).toInt()  // 150ms reverb
+        val feedback = 0.4f
+
+        for (i in 0 until size) {
+            val sample = pitched[i].toFloat()
+
+            // Asymmetric clipping — positive clips harder (growl character)
+            val gained = sample * 1.8f
+            val distorted = if (gained > 0) {
+                min(gained, 18000f)
+            } else {
+                max(gained, -25000f)
+            }
+
+            // Medium reverb
+            val readIdx = (zombieReverbIndex - delaySamples + zombieReverbBuffer.size) % zombieReverbBuffer.size
+            val delayed = zombieReverbBuffer[readIdx]
+            val mixed = distorted + delayed * feedback
+            zombieReverbBuffer[zombieReverbIndex] = mixed
+            zombieReverbIndex = (zombieReverbIndex + 1) % zombieReverbBuffer.size
+
+            // Low-pass to darken the sound
+            val darkened = mixed * 0.85f
+
+            output[i] = darkened.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Giant/T-Rex — Very low pitch + reverb + bass boost
+    // =============================================
+
+    private fun applyGiant(buffer: ShortArray, size: Int): ShortArray {
+        // Step 1: Very low pitch (0.4x)
+        val pitched = applyPitchShift(buffer, size, 0.4f, giantPitchAccum)
+
+        // Step 2: Bass boost + long reverb
+        val output = ShortArray(size)
+        val delaySamples = (sampleRate * 0.25f).toInt()  // 250ms (large space)
+        val feedback = 0.35f
+        var lpOut = 0f
+        val dt = 1.0f / sampleRate
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 300f)
+        val alphaLp = dt / (rcLp + dt)
+
+        for (i in 0 until size) {
+            val sample = pitched[i].toFloat()
+
+            // Bass boost: extract and amplify low freqs
+            lpOut += alphaLp * (sample - lpOut)
+            val boosted = sample + lpOut * 0.5f
+
+            // Long reverb
+            val readIdx = (monsterReverbIndex - delaySamples + monsterReverbBuffer.size) % monsterReverbBuffer.size
+            val delayed = monsterReverbBuffer[readIdx]
+            val mixed = boosted + delayed * feedback
+            monsterReverbBuffer[monsterReverbIndex] = mixed
+            monsterReverbIndex = (monsterReverbIndex + 1) % monsterReverbBuffer.size
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Cave/Cathedral — Schroeder reverb (4 comb + 2 allpass)
+    // =============================================
+
+    private fun applyCave(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val feedback = 0.84f
+        val wetMix = 0.6f
+        val dryMix = 0.4f
+
+        for (i in 0 until size) {
+            val input = buffer[i].toFloat() / 32768f
+
+            // Parallel comb filters
+            var combSum = 0f
+            for (c in 0 until 4) {
+                val delay = combDelays[c]
+                val buf = combBuffers[c]
+                val readIdx = (combIndices[c] - delay + buf.size) % buf.size
+                val delayed = buf[readIdx]
+                val combOut = input + feedback * delayed
+                buf[combIndices[c]] = combOut
+                combIndices[c] = (combIndices[c] + 1) % buf.size
+                combSum += delayed
+            }
+            combSum /= 4f
+
+            // Series allpass filters
+            var allpassOut = combSum
+            for (a in 0 until 2) {
+                val delay = allpassDelays[a]
+                val buf = allpassBuffers[a]
+                val readIdx = (allpassIndices[a] - delay + buf.size) % buf.size
+                val delayed = buf[readIdx]
+                val apInput = allpassOut
+                allpassOut = -0.5f * apInput + delayed
+                buf[allpassIndices[a]] = apInput + 0.5f * delayed
+                allpassIndices[a] = (allpassIndices[a] + 1) % buf.size
+            }
+
+            // Mix dry + wet
+            val mixed = (input * dryMix + allpassOut * wetMix) * 32768f
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Ghost/Whisper — breathy noise + octave up ghost + long reverb
+    // =============================================
+
+    private fun applyGhost(buffer: ShortArray, size: Int): ShortArray {
+        // Pitched-up octave copy (faint)
+        val octaveUp = applyPitchShift(buffer, size, 2.0f, ghostPitchAccum)
+
+        val output = ShortArray(size)
+        val delaySamples = (sampleRate * 0.8f).toInt()  // 800ms long reverb
+        val feedback = 0.5f
+
+        for (i in 0 until size) {
+            val dry = buffer[i].toFloat() * 0.30f           // Original at 30%
+            val pitched = octaveUp[i].toFloat() * 0.20f     // Octave up at 20%
+
+            // White noise shaped by input envelope
+            val envelope = abs(buffer[i].toFloat()) / 32768f
+            val noise = (Math.random().toFloat() - 0.5f) * 32768f * 0.15f * envelope
+
+            val combined = dry + pitched + noise
+
+            // Long reverb
+            val readIdx = (ghostReverbIndex - delaySamples + ghostReverbBuffer.size) % ghostReverbBuffer.size
+            val delayed = ghostReverbBuffer[readIdx]
+            val mixed = combined + delayed * feedback
+            ghostReverbBuffer[ghostReverbIndex] = mixed
+            ghostReverbIndex = (ghostReverbIndex + 1) % ghostReverbBuffer.size
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Darth Vader — pitch down + subtle ring mod + chest resonance + helmet reverb
+    // =============================================
+
+    private fun applyDarthVader(buffer: ShortArray, size: Int): ShortArray {
+        // Pitch shift down
+        val pitched = applyPitchShift(buffer, size, 0.75f, vaderPitchAccum)
+
+        val output = ShortArray(size)
+        val ringFreq = 30.0  // Very low ring mod
+        val ringPhaseInc = 2.0 * Math.PI * ringFreq / sampleRate
+        val helmDelaySamples = (sampleRate * 0.05f).toInt()  // 50ms helmet reflection
+        val feedback = 0.2f
+
+        // Band emphasis filter state (100-200Hz resonance)
+        val dt = 1.0f / sampleRate
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 100f)
+        val alphaHp = rcHp / (rcHp + dt)
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 200f)
+        val alphaLp = dt / (rcLp + dt)
+        var hpPrev = 0f
+        var hpOut = 0f
+        var lpOut = 0f
+
+        for (i in 0 until size) {
+            val sample = pitched[i].toFloat()
+
+            // Subtle ring modulation (20% mix)
+            val ringMod = sin(vaderRingPhase).toFloat()
+            val modulated = sample * (0.8f + 0.2f * ringMod)
+            vaderRingPhase += ringPhaseInc
+            if (vaderRingPhase > 2.0 * Math.PI) vaderRingPhase -= 2.0 * Math.PI
+
+            // Extract chest resonance (100-200Hz band)
+            hpOut = alphaHp * (hpOut + modulated - hpPrev)
+            hpPrev = modulated
+            lpOut += alphaLp * (hpOut - lpOut)
+
+            // Boost resonance and add back
+            val resonanceBoost = modulated + lpOut * 0.4f
+
+            // Short helmet reverb
+            val readIdx = (vaderReverbIndex - helmDelaySamples + vaderReverbBuffer.size) % vaderReverbBuffer.size
+            val delayed = vaderReverbBuffer[readIdx]
+            val mixed = resonanceBoost + delayed * feedback
+            vaderReverbBuffer[vaderReverbIndex] = mixed
+            vaderReverbIndex = (vaderReverbIndex + 1) % vaderReverbBuffer.size
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Old Man — slight pitch down + tremolo + thin EQ
+    // =============================================
+
+    private fun applyOldMan(buffer: ShortArray, size: Int): ShortArray {
+        // Pitch shift down slightly
+        val pitched = applyPitchShift(buffer, size, 0.85f, oldManPitchAccum)
+
+        val output = ShortArray(size)
+        val tremoloRate = 5.5  // Hz — vocal tremor
+        val tremoloPhaseInc = 2.0 * Math.PI * tremoloRate / sampleRate
+        val tremoloDepth = 0.15f
+
+        // Thin voice: cut bass below 150Hz (high-pass)
+        val dt = 1.0f / sampleRate
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 150f)
+        val alphaHp = rcHp / (rcHp + dt)
+        var hpPrev = 0f
+        var hpOut = 0f
+
+        for (i in 0 until size) {
+            val sample = pitched[i].toFloat()
+
+            // High-pass to thin the voice
+            hpOut = alphaHp * (hpOut + sample - hpPrev)
+            hpPrev = sample
+
+            // Tremolo
+            val tremoloMod = 1.0f - tremoloDepth + tremoloDepth * sin(oldManTremoloPhase).toFloat()
+            oldManTremoloPhase += tremoloPhaseInc
+            if (oldManTremoloPhase > 2.0 * Math.PI) oldManTremoloPhase -= 2.0 * Math.PI
+
+            val tremoloed = hpOut * tremoloMod
+
+            // Add very slight crackle
+            val crackle = if (Math.random() < 0.002) (Math.random().toFloat() - 0.5f) * 2000f else 0f
+
+            output[i] = (tremoloed + crackle).toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // Astronaut/Space — radio filter + flanger + long reverb + static
+    // =============================================
+
+    private fun applyAstronaut(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val dt = 1.0f / sampleRate
+
+        // Band-pass 500-5000Hz
+        val rcHp = 1.0f / (2.0f * Math.PI.toFloat() * 500f)
+        val alphaHp = rcHp / (rcHp + dt)
+        val rcLp = 1.0f / (2.0f * Math.PI.toFloat() * 5000f)
+        val alphaLp = dt / (rcLp + dt)
+        var hpPrev = 0f
+        var hpOut = 0f
+        var lpOut = 0f
+
+        // Flanger params
+        val flangerRate = 0.1  // Hz — very slow
+        val flangerPhaseInc = 2.0 * Math.PI * flangerRate / sampleRate
+        val flangerBaseDelay = 88  // ~2ms
+        val flangerDepth = 44     // ~1ms modulation
+
+        // Long reverb
+        val reverbDelaySamples = (sampleRate * 0.6f).toInt()  // 600ms
+        val reverbFeedback = 0.45f
+
+        for (i in 0 until size) {
+            val sample = buffer[i].toFloat()
+
+            // Band-pass
+            hpOut = alphaHp * (hpOut + sample - hpPrev)
+            hpPrev = sample
+            lpOut += alphaLp * (hpOut - lpOut)
+
+            // Write to flanger buffer
+            astronautFlangerBuffer[astronautFlangerIndex] = lpOut
+
+            // Read from flanger with modulated delay
+            val mod = (sin(astronautFlangerPhase) * flangerDepth).toInt()
+            val flangerReadIdx = (astronautFlangerIndex - flangerBaseDelay - mod + astronautFlangerBuffer.size) % astronautFlangerBuffer.size
+            val flanged = (lpOut + astronautFlangerBuffer[flangerReadIdx]) * 0.5f
+
+            astronautFlangerIndex = (astronautFlangerIndex + 1) % astronautFlangerBuffer.size
+            astronautFlangerPhase += flangerPhaseInc
+            if (astronautFlangerPhase > 2.0 * Math.PI) astronautFlangerPhase -= 2.0 * Math.PI
+
+            // Intermittent static bursts
+            val static = if (Math.random() < 0.005) (Math.random().toFloat() - 0.5f) * 3000f else 0f
+
+            val withStatic = flanged + static
+
+            // Long reverb
+            val readIdx = (astronautReverbIndex - reverbDelaySamples + astronautReverbBuffer.size) % astronautReverbBuffer.size
+            val delayed = astronautReverbBuffer[readIdx]
+            val mixed = withStatic + delayed * reverbFeedback
+            astronautReverbBuffer[astronautReverbIndex] = mixed
+            astronautReverbIndex = (astronautReverbIndex + 1) % astronautReverbBuffer.size
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return output
+    }
+
+    // =============================================
+    // 8-Bit/Retro Game — sample rate reduction + bit crush
+    // =============================================
+
+    private fun applyEightBit(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val holdLength = 6  // Hold each sample for 6 frames (~7.35kHz effective)
+        val bitLevels = 8   // Quantize to 8 levels (3-bit)
+        val step = (65536 / bitLevels)  // Step size for quantization
+
+        for (i in 0 until size) {
+            eightBitHoldCounter++
+            if (eightBitHoldCounter >= holdLength) {
+                eightBitHoldCounter = 0
+                // Quantize to fewer bit levels
+                val sample = buffer[i].toInt() + 32768  // Shift to unsigned
+                val quantized = (sample / step) * step - 32768  // Quantize and shift back
+                eightBitHoldSample = quantized.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+            }
+            output[i] = eightBitHoldSample
+        }
+        return output
+    }
+
+    // =============================================
+    // Stadium/Concert — pre-delay + very long Schroeder reverb + early reflections
+    // =============================================
+
+    private fun applyStadium(buffer: ShortArray, size: Int): ShortArray {
+        val output = ShortArray(size)
+        val preDelaySamples = (sampleRate * 0.08f).toInt()  // 80ms pre-delay
+        val lateFeedback = 0.92f  // Very long decay
+        val wetMix = 0.5f
+        val dryMix = 0.5f
+
+        for (i in 0 until size) {
+            val input = buffer[i].toFloat()
+
+            // Early reflections (sum of 3 taps)
+            var earlySum = 0f
+            for (e in 0 until 3) {
+                val buf = stadiumEarlyBuffers[e]
+                val delay = stadiumEarlyDelays[e]
+                val readIdx = (stadiumEarlyIndices[e] - delay + buf.size) % buf.size
+                earlySum += buf[readIdx] * 0.3f
+                buf[stadiumEarlyIndices[e]] = input
+                stadiumEarlyIndices[e] = (stadiumEarlyIndices[e] + 1) % buf.size
+            }
+
+            // Late reverb with pre-delay
+            val lateInput = input + earlySum * 0.5f
+            val lateReadIdx = (stadiumLateIndex - preDelaySamples - (sampleRate * 0.5f).toInt() + stadiumLateBuffer.size) % stadiumLateBuffer.size
+            val lateDelayed = stadiumLateBuffer[lateReadIdx]
+            val lateMixed = lateInput + lateDelayed * lateFeedback
+
+            // Damping (slight low-pass on feedback to simulate air absorption)
+            val damped = lateMixed * 0.97f
+            stadiumLateBuffer[stadiumLateIndex] = damped
+            stadiumLateIndex = (stadiumLateIndex + 1) % stadiumLateBuffer.size
+
+            // Final mix
+            val mixed = input * dryMix + (earlySum + lateDelayed * 0.3f) * wetMix
+
+            output[i] = mixed.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
         return output
     }

@@ -67,19 +67,35 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(hasPermission = granted)
     }
 
+    private var isToggling = false
+
     fun toggleAudio() {
-        val state = _uiState.value
-        if (state.isRunning) {
-            audioEngine.stop()
-            _uiState.value = state.copy(isRunning = false, amplitude = 0f)
-        } else {
-            audioRouter.requestAudioFocus()
-            if (audioEngine.setup()) {
-                audioEngine.volume = state.volume
-                audioEngine.currentEffect = state.currentEffect
-                audioEngine.effectProcessor.echoMix = state.echoMix
-                audioEngine.start()
-                _uiState.value = state.copy(isRunning = true)
+        // Debounce rapid toggling to prevent crashes
+        if (isToggling) return
+        isToggling = true
+
+        viewModelScope.launch {
+            try {
+                val state = _uiState.value
+                if (state.isRunning) {
+                    audioEngine.stop()
+                    _uiState.value = _uiState.value.copy(isRunning = false, amplitude = 0f)
+                } else {
+                    audioRouter.requestAudioFocus()
+                    // Release old resources and re-setup fresh
+                    audioEngine.release()
+                    if (audioEngine.setup()) {
+                        audioEngine.volume = _uiState.value.volume
+                        audioEngine.currentEffect = _uiState.value.currentEffect
+                        audioEngine.effectProcessor.echoMix = _uiState.value.echoMix
+                        audioEngine.start()
+                        _uiState.value = _uiState.value.copy(isRunning = true)
+                    }
+                }
+            } finally {
+                // Small delay before allowing next toggle to let resources settle
+                kotlinx.coroutines.delay(300)
+                isToggling = false
             }
         }
     }
