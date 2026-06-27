@@ -22,9 +22,7 @@ class RatingManager(private val preferencesManager: PreferencesManager) {
 
     fun requestReview(activity: Activity, forceShow: Boolean = false) {
         if (hasPromptedThisSession && !forceShow) return
-        if (!forceShow) {
-            hasPromptedThisSession = true
-        }
+        hasPromptedThisSession = true
 
         val manager = ReviewManagerFactory.create(activity)
         val request = manager.requestReviewFlow()

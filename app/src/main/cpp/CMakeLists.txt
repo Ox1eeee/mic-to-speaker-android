@@ -26,3 +26,8 @@ target_compile_options(mic_to_speaker_native PRIVATE
     -O2
     -ffast-math
 )
+
+# 16 KB page size support (required by Google Play for targetSdk 35+)
+target_link_options(mic_to_speaker_native PRIVATE
+    -Wl,-z,max-page-size=16384
+)

@@ -95,6 +95,9 @@ class MainActivity : ComponentActivity() {
                                         PermissionHelper.getRequiredPermissions().toTypedArray()
                                     )
                                 },
+                                onRequestReview = {
+                                    ratingManager.requestReview(this@MainActivity)
+                                },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
