@@ -12,6 +12,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -29,9 +30,14 @@ import com.bluetooth.bluetoothmictospeaker.ui.theme.BluetoothMicToSpeakerTheme
 import com.bluetooth.bluetoothmictospeaker.utils.PermissionHelper
 import com.bluetooth.bluetoothmictospeaker.utils.PreferencesManager
 import com.bluetooth.bluetoothmictospeaker.utils.RatingManager
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        private const val FREE_LAUNCH_LIMIT = 3
+    }
 
     private val audioViewModel: AudioViewModel by viewModels()
     private val onboardingViewModel: OnboardingViewModel by viewModels()
@@ -40,6 +46,7 @@ class MainActivity : ComponentActivity() {
     private var showSettings by mutableStateOf(false)
     private var showPaywall by mutableStateOf(false)
     private var hasShownPaywallThisSession by mutableStateOf(false)
+    private var launchCount by mutableIntStateOf(0)
 
     private lateinit var preferencesManager: PreferencesManager
     private lateinit var ratingManager: RatingManager
@@ -64,6 +71,7 @@ class MainActivity : ComponentActivity() {
         // Track launch count
         lifecycleScope.launch {
             preferencesManager.incrementLaunchCount()
+            launchCount = preferencesManager.launchCount.first()
             if (ratingManager.shouldPromptOnLaunch()) {
                 ratingManager.requestReview(this@MainActivity)
             }
@@ -96,7 +104,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 },
                                 onRequestReview = {
-                                    ratingManager.requestReview(this@MainActivity)
+                                    ratingManager.requestReview(this@MainActivity, forceShow = true)
                                 },
                                 modifier = Modifier.padding(innerPadding)
                             )
@@ -104,6 +112,7 @@ class MainActivity : ComponentActivity() {
                         showPaywall -> {
                             PaywallScreen(
                                 subscriptionViewModel = subscriptionViewModel,
+                                dismissable = launchCount <= FREE_LAUNCH_LIMIT,
                                 onDismiss = {
                                     InterstitialAdManager.trackActionAndShowAd(this@MainActivity, isPro = isPro) {
                                         showPaywall = false

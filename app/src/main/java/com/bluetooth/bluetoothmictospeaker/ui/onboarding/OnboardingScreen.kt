@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,12 +42,14 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -80,7 +81,6 @@ import com.bluetooth.bluetoothmictospeaker.ui.theme.DarkSurfaceVariant
 import com.bluetooth.bluetoothmictospeaker.ui.theme.GlassBorder
 import com.bluetooth.bluetoothmictospeaker.ui.theme.GlassWhite
 import com.bluetooth.bluetoothmictospeaker.ui.theme.TextSecondary
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.sin
@@ -243,7 +243,10 @@ fun OnboardingScreen(
                         pageData = pages[page],
                         previewManager = previewManager
                     )
-                    4 -> RatingReviewPage(pageData = pages[page])
+                    4 -> RatingReviewPage(
+                        pageData = pages[page],
+                        onRequestReview = onRequestReview
+                    )
                     else -> OnboardingPageContent(page = pages[page])
                 }
             }
@@ -294,10 +297,6 @@ fun OnboardingScreen(
                             onRequestPermissions()
                             onComplete()
                         } else {
-                            // Trigger in-app review when leaving the rating page
-                            if (pagerState.currentPage == 4) {
-                                onRequestReview()
-                            }
                             scope.launch {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
                             }
@@ -499,13 +498,15 @@ private fun OnboardingPageContent(page: OnboardingPage) {
 }
 
 @Composable
-private fun RatingReviewPage(pageData: OnboardingPage) {
-    val cardScale = remember { Animatable(0.3f) }
+private fun RatingReviewPage(pageData: OnboardingPage, onRequestReview: () -> Unit) {
+    val accentGreen = Color(0xFF66BB6A)
+    var selectedRating by remember { mutableIntStateOf(0) }
+    var submitted by remember { mutableStateOf(false) }
     val contentAlpha = remember { Animatable(0f) }
-    val starAlpha = remember { Animatable(0f) }
+    val iconScale = remember { Animatable(0.3f) }
 
     LaunchedEffect(Unit) {
-        cardScale.animateTo(
+        iconScale.animateTo(
             targetValue = 1f,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -519,154 +520,141 @@ private fun RatingReviewPage(pageData: OnboardingPage) {
             animationSpec = tween(600, delayMillis = 200, easing = EaseInOut)
         )
     }
-    LaunchedEffect(Unit) {
-        delay(600)
-        starAlpha.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(500, easing = EaseInOut)
-        )
-    }
-
-    // Floating animation for the card
-    val infiniteTransition = rememberInfiniteTransition(label = "ratingFloat")
-    val floatOffset by infiniteTransition.animateFloat(
-        initialValue = -8f, targetValue = 8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = EaseInOut),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "cardFloat"
-    )
 
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Title
-        Text(
-            text = pageData.title,
-            fontSize = 34.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            letterSpacing = (-0.5).sp,
-            modifier = Modifier.alpha(contentAlpha.value)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = pageData.description,
-            fontSize = 15.sp,
-            color = TextSecondary,
-            textAlign = TextAlign.Center,
-            lineHeight = 24.sp,
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .alpha(contentAlpha.value)
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Smiley card with amber/gold theme
-        Box(
-            modifier = Modifier
-                .scale(cardScale.value)
-                .offset(y = floatOffset.dp)
-                .size(180.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFFFFCA28),
-                            Color(0xFFFFB300)
-                        )
-                    )
-                )
-                .border(
-                    width = 3.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFFFD54F),
-                            Color(0xFFFF8F00)
-                        )
-                    ),
-                    shape = RoundedCornerShape(28.dp)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+        if (!submitted) {
+            // Heart icon in green circle
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .scale(iconScale.value)
+                    .clip(CircleShape)
+                    .background(accentGreen),
+                contentAlignment = Alignment.Center
             ) {
-                // App icon text
-                Text(
-                    text = "MIC",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFE65100),
-                    letterSpacing = 3.sp
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = Color(0xFF2E7D32),
+                    modifier = Modifier.size(44.dp)
                 )
+            }
 
-                Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
-                // Smiley face using text
-                Text(
-                    text = "\u2022 \u2022",
-                    fontSize = 28.sp,
-                    color = Color(0xFF5D4037),
-                    letterSpacing = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            Text(
+                text = "Enjoying the journey so far?",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.alpha(contentAlpha.value)
+            )
 
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-                // Smile curve
+            Text(
+                text = "Your rating helps others find support.",
+                fontSize = 15.sp,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.alpha(contentAlpha.value)
+            )
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            // Interactive star rating
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.alpha(contentAlpha.value)
+            ) {
+                repeat(5) { index ->
+                    val starIndex = index + 1
+                    val isSelected = starIndex <= selectedRating
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .padding(4.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSelected) accentGreen.copy(alpha = 0.2f)
+                                else Color(0xFF2A2A2A)
+                            )
+                            .clickable { selectedRating = starIndex },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) Icons.Filled.Star else Icons.Outlined.Star,
+                            contentDescription = "Star $starIndex",
+                            tint = if (isSelected) accentGreen else Color(0xFF757575),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // Submit button (appears after selecting stars)
+            if (selectedRating > 0) {
+                Spacer(modifier = Modifier.height(28.dp))
+
                 Box(
                     modifier = Modifier
-                        .size(width = 40.dp, height = 20.dp)
-                        .drawBehind {
-                            drawArc(
-                                color = Color(0xFF5D4037),
-                                startAngle = 0f,
-                                sweepAngle = 180f,
-                                useCenter = false,
-                                style = Stroke(width = 3.dp.toPx())
-                            )
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(accentGreen.copy(alpha = 0.85f))
+                        .clickable {
+                            submitted = true
+                            onRequestReview()
                         }
+                        .padding(horizontal = 32.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Submit",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1B5E20)
+                    )
+                }
+            }
+        } else {
+            // Thank you state
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .scale(iconScale.value)
+                    .clip(CircleShape)
+                    .background(accentGreen),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u2728",
+                    fontSize = 36.sp
                 )
             }
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            Text(
+                text = "Thank you! \uD83D\uDE4F",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Your support means the world to us.",
+                fontSize = 15.sp,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
         }
-
-        Spacer(modifier = Modifier.height(36.dp))
-
-        // Star rating display (animated)
-        Row(
-            modifier = Modifier.alpha(starAlpha.value),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            repeat(5) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFFFB300),
-                    modifier = Modifier
-                        .size(36.dp)
-                        .padding(horizontal = 2.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "Tap Continue to rate on Play Store",
-            fontSize = 13.sp,
-            color = TextSecondary.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center,
-            modifier = Modifier.alpha(starAlpha.value)
-        )
     }
 }
 

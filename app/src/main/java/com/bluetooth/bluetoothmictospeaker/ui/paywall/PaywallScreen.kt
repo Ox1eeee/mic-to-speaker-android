@@ -3,6 +3,7 @@ package com.bluetooth.bluetoothmictospeaker.ui.paywall
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,11 +65,14 @@ private val CardBorderDefault = Color(0xFF333355)
 fun PaywallScreen(
     subscriptionViewModel: SubscriptionViewModel,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dismissable: Boolean = true
 ) {
     val state by subscriptionViewModel.uiState.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+
+    BackHandler(enabled = !dismissable) { }
 
     Box(
         modifier = modifier
@@ -271,25 +275,27 @@ fun PaywallScreen(
         }
 
         // Close button (rendered after Column so it's on top and clickable)
-        IconButton(
-            onClick = onDismiss,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 12.dp, end = 8.dp)
-        ) {
-            Box(
+        if (dismissable) {
+            IconButton(
+                onClick = onDismiss,
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF333333)),
-                contentAlignment = Alignment.Center
+                    .align(Alignment.TopEnd)
+                    .padding(top = 12.dp, end = 8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF333333)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
