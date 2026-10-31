@@ -145,8 +145,7 @@ class MainActivity : ComponentActivity() {
                                         PermissionHelper.getRequiredPermissions().toTypedArray()
                                     )
                                 },
-                                isPro = isPro,
-                                modifier = Modifier.padding(innerPadding)
+                                isPro = isPro
                             )
                         }
                     }

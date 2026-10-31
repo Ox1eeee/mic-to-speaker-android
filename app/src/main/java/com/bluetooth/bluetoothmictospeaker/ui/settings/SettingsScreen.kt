@@ -41,6 +41,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +66,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val audioState by audioViewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     Box(
         modifier = modifier
@@ -185,7 +187,9 @@ fun SettingsScreen(
             SettingsItem(
                 icon = Icons.Default.Info,
                 title = "About",
-                subtitle = "Mic Speaker v1.0",
+                subtitle = "LiveMic v" + runCatching {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                }.getOrNull().orEmpty(),
                 accentColor = AccentPurple,
                 onClick = { }
             )
