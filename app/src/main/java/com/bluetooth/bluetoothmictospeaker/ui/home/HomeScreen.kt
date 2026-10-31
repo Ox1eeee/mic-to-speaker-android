@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -70,6 +71,7 @@ import com.bluetooth.bluetoothmictospeaker.ui.theme.DarkSurfaceVariant
 import com.bluetooth.bluetoothmictospeaker.ui.theme.GlassBorder
 import com.bluetooth.bluetoothmictospeaker.ui.theme.GlassWhite
 import com.bluetooth.bluetoothmictospeaker.ui.theme.TextSecondary
+import com.bluetooth.bluetoothmictospeaker.utils.PermissionHelper
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -78,10 +80,12 @@ fun HomeScreen(
     viewModel: AudioViewModel,
     onSettingsClick: () -> Unit = {},
     onUpgradeClick: () -> Unit = {},
+    onRequestPermissions: () -> Unit = {},
     isPro: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     // Ambient background animation
     val infiniteTransition = rememberInfiniteTransition(label = "homeBg")
@@ -158,7 +162,13 @@ fun HomeScreen(
             // Power button with glow rings
             PowerButton(
                 isRunning = state.isRunning,
-                onClick = { viewModel.toggleAudio() }
+                onClick = {
+                    if (!state.isRunning && !PermissionHelper.hasAudioPermission(context)) {
+                        onRequestPermissions()
+                    } else {
+                        viewModel.toggleAudio()
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(6.dp))

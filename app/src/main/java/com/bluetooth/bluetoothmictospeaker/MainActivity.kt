@@ -53,9 +53,9 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.values.all { it }
-        audioViewModel.setPermissionGranted(allGranted)
+    ) { _ ->
+        audioViewModel.setPermissionGranted(PermissionHelper.hasAllPermissions(this))
+        if (PermissionHelper.hasAudioPermission(this)) audioViewModel.toggleAudio()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             preferencesManager.incrementLaunchCount()
             launchCount = preferencesManager.launchCount.first()
-            if (ratingManager.shouldPromptOnLaunch()) {
+            if (preferencesManager.onboardingCompleted.first() && ratingManager.shouldPromptOnLaunch()) {
                 ratingManager.requestReview(this@MainActivity)
             }
         }
@@ -91,24 +91,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                if (!onboardingCompleted) {
+                    OnboardingScreen(
+                        onComplete = { onboardingViewModel.completeOnboarding() }
+                    )
+                } else Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     when {
-                        !onboardingCompleted -> {
-                            OnboardingScreen(
-                                onComplete = {
-                                    onboardingViewModel.completeOnboarding()
-                                },
-                                onRequestPermissions = {
-                                    permissionLauncher.launch(
-                                        PermissionHelper.getRequiredPermissions().toTypedArray()
-                                    )
-                                },
-                                onRequestReview = {
-                                    ratingManager.requestReview(this@MainActivity, forceShow = true)
-                                },
-                                modifier = Modifier.padding(innerPadding)
-                            )
-                        }
                         showPaywall -> {
                             PaywallScreen(
                                 subscriptionViewModel = subscriptionViewModel,
@@ -151,6 +139,11 @@ class MainActivity : ComponentActivity() {
                                 onUpgradeClick = {
                                     subscriptionViewModel.loadOfferings()
                                     showPaywall = true
+                                },
+                                onRequestPermissions = {
+                                    permissionLauncher.launch(
+                                        PermissionHelper.getRequiredPermissions().toTypedArray()
+                                    )
                                 },
                                 isPro = isPro,
                                 modifier = Modifier.padding(innerPadding)
