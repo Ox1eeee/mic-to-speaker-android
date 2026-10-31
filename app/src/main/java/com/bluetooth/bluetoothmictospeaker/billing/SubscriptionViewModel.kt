@@ -121,6 +121,10 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
         )
     }
 
+    fun consumePurchaseSuccess() {
+        _uiState.value = _uiState.value.copy(purchaseSuccess = false)
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }

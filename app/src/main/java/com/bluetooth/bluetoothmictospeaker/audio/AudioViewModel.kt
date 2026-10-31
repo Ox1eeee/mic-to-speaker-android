@@ -4,8 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluetooth.bluetoothmictospeaker.utils.PreferencesManager
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -20,10 +23,19 @@ data class AudioUiState(
     val hasPermission: Boolean = false
 )
 
+sealed interface MicSessionEvent {
+    data object Started : MicSessionEvent
+    data class Ended(val durationMs: Long) : MicSessionEvent
+}
+
 class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(AudioUiState())
     val uiState: StateFlow<AudioUiState> = _uiState.asStateFlow()
+
+    private val _sessionEvents = MutableSharedFlow<MicSessionEvent>(extraBufferCapacity = 4)
+    val sessionEvents: SharedFlow<MicSessionEvent> = _sessionEvents.asSharedFlow()
+    private var sessionStartMs = 0L
 
     val audioEngine = AudioEngine()
     val audioRouter = AudioRouter(application)
@@ -80,6 +92,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 if (state.isRunning) {
                     audioEngine.stop()
                     _uiState.value = _uiState.value.copy(isRunning = false, amplitude = 0f)
+                    _sessionEvents.tryEmit(MicSessionEvent.Ended(System.currentTimeMillis() - sessionStartMs))
                 } else {
                     audioRouter.requestAudioFocus()
                     // Release old resources and re-setup fresh
@@ -90,6 +103,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                         audioEngine.echoMix = _uiState.value.echoMix
                         audioEngine.start()
                         _uiState.value = _uiState.value.copy(isRunning = true)
+                        sessionStartMs = System.currentTimeMillis()
+                        _sessionEvents.tryEmit(MicSessionEvent.Started)
                     }
                 }
             } finally {

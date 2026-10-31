@@ -14,8 +14,9 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
 
     private val preferencesManager = PreferencesManager(application)
 
-    private val _onboardingCompleted = MutableStateFlow(true) // default true to avoid flash
-    val onboardingCompleted: StateFlow<Boolean> = _onboardingCompleted.asStateFlow()
+    // null = not loaded yet from DataStore; the UI waits (splash stays) until it's known
+    private val _onboardingCompleted = MutableStateFlow<Boolean?>(null)
+    val onboardingCompleted: StateFlow<Boolean?> = _onboardingCompleted.asStateFlow()
 
     private val _currentPage = MutableStateFlow(0)
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()

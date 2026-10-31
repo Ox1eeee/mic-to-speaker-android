@@ -1,6 +1,8 @@
 package com.bluetooth.bluetoothmictospeaker
 
 import android.os.Bundle
+import android.view.View
+import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -30,13 +32,21 @@ import com.bluetooth.bluetoothmictospeaker.ui.theme.BluetoothMicToSpeakerTheme
 import com.bluetooth.bluetoothmictospeaker.utils.PermissionHelper
 import com.bluetooth.bluetoothmictospeaker.utils.PreferencesManager
 import com.bluetooth.bluetoothmictospeaker.utils.RatingManager
+import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import com.bluetooth.bluetoothmictospeaker.audio.MicSessionEvent
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     companion object {
         private const val FREE_LAUNCH_LIMIT = 3
+        private const val REVIEW_PROMPT_DELAY_MS = 600L
     }
 
     private val audioViewModel: AudioViewModel by viewModels()
@@ -63,7 +73,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         preferencesManager = PreferencesManager(this)
-        ratingManager = RatingManager(preferencesManager)
+        ratingManager = RatingManager(this, preferencesManager)
 
         val hasPermission = PermissionHelper.hasAllPermissions(this)
         audioViewModel.setPermissionGranted(hasPermission)
@@ -72,30 +82,69 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             preferencesManager.incrementLaunchCount()
             launchCount = preferencesManager.launchCount.first()
-            if (preferencesManager.onboardingCompleted.first() && ratingManager.shouldPromptOnLaunch()) {
-                ratingManager.requestReview(this@MainActivity)
+        }
+
+        // In-app review: ask after a real mic session ends (see RatingManager for the strategy)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                audioViewModel.sessionEvents.collect { event ->
+                    when (event) {
+                        MicSessionEvent.Started -> ratingManager.onSessionStarted()
+                        is MicSessionEvent.Ended -> {
+                            delay(REVIEW_PROMPT_DELAY_MS)
+                            ratingManager.onSessionEnded(
+                                activity = this@MainActivity,
+                                durationMs = event.durationMs,
+                                allowPrompt = !showPaywall && !showSettings
+                            )
+                        }
+                    }
+                }
             }
         }
 
+        // Keep the system splash on screen until we know whether to show onboarding or home
+        val content = findViewById<View>(android.R.id.content)
+        content.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (onboardingViewModel.onboardingCompleted.value == null) return false
+                content.viewTreeObserver.removeOnPreDrawListener(this)
+                return true
+            }
+        })
+
         setContent {
             BluetoothMicToSpeakerTheme {
-                val onboardingCompleted by onboardingViewModel.onboardingCompleted.collectAsState()
+                val onboardingState by onboardingViewModel.onboardingCompleted.collectAsState()
                 val isPro by RevenueCatManager.isPro.collectAsState()
 
                 // Auto-show paywall for free users after onboarding or on app launch
-                LaunchedEffect(onboardingCompleted, isPro) {
-                    if (onboardingCompleted && !isPro && !hasShownPaywallThisSession) {
+                LaunchedEffect(onboardingState, isPro) {
+                    if (onboardingState == true && !isPro && !hasShownPaywallThisSession) {
                         subscriptionViewModel.loadOfferings()
                         showPaywall = true
                         hasShownPaywallThisSession = true
                     }
                 }
 
-                if (!onboardingCompleted) {
+                // After a successful purchase/restore: close the paywall, then ask for a review
+                val purchaseSuccess by remember {
+                    subscriptionViewModel.uiState.map { it.purchaseSuccess }.distinctUntilChanged()
+                }.collectAsState(initial = false)
+                LaunchedEffect(purchaseSuccess) {
+                    if (purchaseSuccess) {
+                        subscriptionViewModel.consumePurchaseSuccess()
+                        showPaywall = false
+                        delay(REVIEW_PROMPT_DELAY_MS)
+                        ratingManager.onPurchaseCompleted(this@MainActivity)
+                    }
+                }
+
+                if (onboardingState == false) {
                     OnboardingScreen(
                         onComplete = { onboardingViewModel.completeOnboarding() }
                     )
-                } else Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                } else if (onboardingState == true) Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     when {
                         showPaywall -> {
                             PaywallScreen(
@@ -118,7 +167,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onRateApp = {
-                                    ratingManager.requestReview(this@MainActivity, forceShow = true)
+                                    ratingManager.openStoreListing(this@MainActivity)
                                 },
                                 onUpgrade = {
                                     subscriptionViewModel.loadOfferings()
