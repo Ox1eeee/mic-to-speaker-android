@@ -3,7 +3,6 @@ package com.bluetooth.bluetoothmictospeaker.ui.paywall
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +38,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,7 +62,7 @@ import com.bluetooth.bluetoothmictospeaker.ui.theme.TextSecondary
 
 private val PaywallBlue = Color(0xFF2979FF)
 private val PaywallBlueBright = Color(0xFF448AFF)
-private val BestValueGreen = Color(0xFF00E676)
+private val BestValueOrange = Color(0xFFF7931E)
 private val CardBackground = Color(0xFF1A1A2E)
 private val CardBorderDefault = Color(0xFF333355)
 
@@ -65,14 +70,11 @@ private val CardBorderDefault = Color(0xFF333355)
 fun PaywallScreen(
     subscriptionViewModel: SubscriptionViewModel,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-    dismissable: Boolean = true
+    modifier: Modifier = Modifier
 ) {
     val state by subscriptionViewModel.uiState.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
-
-    BackHandler(enabled = !dismissable) { }
 
     Box(
         modifier = modifier
@@ -192,11 +194,9 @@ fun PaywallScreen(
             // Lifetime Plan Card
             PlanCard(
                 title = "Lifetime Plan",
-                priceText = if (state.lifetimePrice.isNotEmpty())
-                    state.lifetimePrice
-                else
-                    "",
-                badge = "BEST VALUE",
+                priceText = "Pay once, use forever",
+                trailingPrice = state.lifetimePrice.takeIf { it.isNotEmpty() }?.let { "$it one-time" },
+                badge = "Best Value",
                 isSelected = state.selectedPlan == 1,
                 onClick = { subscriptionViewModel.selectPlan(1) }
             )
@@ -256,7 +256,7 @@ fun PaywallScreen(
                     color = TextSecondary,
                     modifier = Modifier.clickable {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aztty.com/privacy-policy-15/"))
-                        context.startActivity(intent)
+                        runCatching { context.startActivity(intent) }
                     }
                 )
             }
@@ -275,27 +275,25 @@ fun PaywallScreen(
         }
 
         // Close button (rendered after Column so it's on top and clickable)
-        if (dismissable) {
-            IconButton(
-                onClick = onDismiss,
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 12.dp, end = 8.dp)
+        ) {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 12.dp, end = 8.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF333333)),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF333333)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -333,7 +331,8 @@ private fun PlanCard(
     priceText: String,
     badge: String?,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    trailingPrice: String? = null
 ) {
     val borderColor = if (isSelected) PaywallBlue else CardBorderDefault
 
@@ -355,37 +354,62 @@ private fun PlanCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = title,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = Color.White,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     if (badge != null) {
                         Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.weight(1f))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(BestValueGreen)
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .clip(CircleShape)
+                                .background(BestValueOrange)
+                                .padding(horizontal = 10.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = badge,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.Black
+                                color = Color.White,
+                                maxLines = 1
                             )
                         }
                     }
                 }
-                if (priceText.isNotEmpty()) {
+                if (priceText.isNotEmpty() || trailingPrice != null) {
                     Spacer(modifier = Modifier.height(4.dp))
+                    // Subtitle + price always on one line; the font steps down slightly on narrow screens
+                    var scale by remember(priceText, trailingPrice) { mutableFloatStateOf(1f) }
+                    val line = buildAnnotatedString {
+                        withStyle(SpanStyle(color = TextSecondary)) { append(priceText) }
+                        if (trailingPrice != null) {
+                            append("  ")
+                            withStyle(
+                                SpanStyle(
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 15.sp * scale
+                                )
+                            ) { append(trailingPrice) }
+                        }
+                    }
                     Text(
-                        text = priceText,
-                        fontSize = 14.sp,
-                        color = TextSecondary
+                        text = line,
+                        fontSize = 14.sp * scale,
+                        maxLines = 1,
+                        softWrap = false,
+                        onTextLayout = { result ->
+                            if (result.didOverflowWidth && scale > 0.7f) scale -= 0.05f
+                        }
                     )
                 }
             }

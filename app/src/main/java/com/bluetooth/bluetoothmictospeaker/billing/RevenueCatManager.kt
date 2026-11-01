@@ -10,6 +10,7 @@ import com.revenuecat.purchases.PurchaseParams
 import com.revenuecat.purchases.Purchases
 import com.revenuecat.purchases.PurchasesConfiguration
 import com.revenuecat.purchases.PurchasesError
+import com.revenuecat.purchases.PurchasesErrorCode
 import com.revenuecat.purchases.interfaces.PurchaseCallback
 import com.revenuecat.purchases.interfaces.ReceiveCustomerInfoCallback
 import com.revenuecat.purchases.interfaces.ReceiveOfferingsCallback
@@ -71,7 +72,8 @@ object RevenueCatManager {
         activity: Activity,
         pkg: Package,
         onSuccess: (CustomerInfo) -> Unit,
-        onError: (String) -> Unit
+        onError: (PurchasesError) -> Unit,
+        onCancelled: () -> Unit
     ) {
         Purchases.sharedInstance.purchase(
             PurchaseParams.Builder(activity, pkg).build(),
@@ -84,11 +86,12 @@ object RevenueCatManager {
                 }
 
                 override fun onError(error: PurchasesError, userCancelled: Boolean) {
-                    if (userCancelled) {
+                    if (userCancelled || error.code == PurchasesErrorCode.PurchaseCancelledError) {
                         Log.d(TAG, "Purchase cancelled by user")
+                        onCancelled()
                     } else {
-                        Log.e(TAG, "Purchase error: ${error.message}")
-                        onError(error.message)
+                        Log.e(TAG, "Purchase error: ${error.code} ${error.message} (${error.underlyingErrorMessage})")
+                        onError(error)
                     }
                 }
             }
@@ -97,7 +100,7 @@ object RevenueCatManager {
 
     fun restorePurchases(
         onSuccess: (CustomerInfo) -> Unit,
-        onError: (String) -> Unit
+        onError: (PurchasesError) -> Unit
     ) {
         Purchases.sharedInstance.restorePurchases(object : ReceiveCustomerInfoCallback {
             override fun onReceived(customerInfo: CustomerInfo) {
@@ -108,8 +111,8 @@ object RevenueCatManager {
             }
 
             override fun onError(error: PurchasesError) {
-                Log.e(TAG, "Restore error: ${error.message}")
-                onError(error.message)
+                Log.e(TAG, "Restore error: ${error.code} ${error.message} (${error.underlyingErrorMessage})")
+                onError(error)
             }
         })
     }

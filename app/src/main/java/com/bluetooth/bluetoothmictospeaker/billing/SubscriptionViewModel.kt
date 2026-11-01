@@ -5,6 +5,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.revenuecat.purchases.Package
+import com.revenuecat.purchases.PurchasesError
+import com.revenuecat.purchases.PurchasesErrorCode
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +31,8 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
     private val _uiState = MutableStateFlow(SubscriptionUiState())
     val uiState: StateFlow<SubscriptionUiState> = _uiState.asStateFlow()
 
+    private var errorDismissJob: Job? = null
+
     init {
         // Observe offerings from RevenueCatManager
         viewModelScope.launch {
@@ -41,7 +47,9 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
         loadOfferings()
     }
 
+    /** Called every time the paywall is opened. */
     fun loadOfferings() {
+        clearError()
         _uiState.value = _uiState.value.copy(isLoading = true)
         
         // Trigger fetch from RevenueCat
@@ -66,6 +74,7 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun selectPlan(plan: Int) {
+        clearError()
         _uiState.value = _uiState.value.copy(selectedPlan = plan)
     }
 
@@ -74,11 +83,15 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
         val pkg = if (state.selectedPlan == 0) state.weeklyPackage else state.lifetimePackage
 
         if (pkg == null) {
-            _uiState.value = state.copy(errorMessage = "Product not available. Please try again.")
+            // Plans may not have loaded (e.g. offline at launch): retry fetching so the next tap works
+            RevenueCatManager.fetchOfferings()
+            _uiState.value = state.copy(isLoading = false)
+            showError("Couldn't load plans. Check your internet connection and try again.")
             return
         }
 
-        _uiState.value = state.copy(isLoading = true, errorMessage = null)
+        clearError()
+        _uiState.value = state.copy(isLoading = true)
 
         RevenueCatManager.purchase(
             activity = activity,
@@ -90,17 +103,19 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
                     purchaseSuccess = true
                 )
             },
-            onError = { message ->
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = message
-                )
+            onError = { error ->
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                showError(purchaseErrorMessage(error))
+            },
+            onCancelled = {
+                _uiState.value = _uiState.value.copy(isLoading = false)
             }
         )
     }
 
     fun restorePurchases() {
-        _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+        clearError()
+        _uiState.value = _uiState.value.copy(isLoading = true)
 
         RevenueCatManager.restorePurchases(
             onSuccess = {
@@ -108,15 +123,13 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
                 _uiState.value = _uiState.value.copy(
                     isPro = hasPro,
                     isLoading = false,
-                    errorMessage = if (!hasPro) "No active subscriptions found." else null,
                     purchaseSuccess = hasPro
                 )
+                if (!hasPro) showError("No previous purchases found for this Google account.")
             },
-            onError = { message ->
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = message
-                )
+            onError = { error ->
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                showError(restoreErrorMessage(error))
             }
         )
     }
@@ -126,6 +139,57 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun clearError() {
+        errorDismissJob?.cancel()
         _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
+    /** Shows [message] under the paywall buttons and hides it automatically after a few seconds. */
+    private fun showError(message: String) {
+        errorDismissJob?.cancel()
+        _uiState.value = _uiState.value.copy(errorMessage = message)
+        errorDismissJob = viewModelScope.launch {
+            delay(ERROR_VISIBLE_MS)
+            _uiState.value = _uiState.value.copy(errorMessage = null)
+        }
+    }
+
+    private fun purchaseErrorMessage(error: PurchasesError): String = when (error.code) {
+        PurchasesErrorCode.NetworkError ->
+            "No internet connection. Please check your connection and try again."
+        PurchasesErrorCode.StoreProblemError ->
+            "Google Play is having trouble right now. Please try again in a moment."
+        PurchasesErrorCode.PurchaseNotAllowedError, PurchasesErrorCode.InsufficientPermissionsError ->
+            "Purchases aren't allowed on this device or Google account."
+        PurchasesErrorCode.ProductNotAvailableForPurchaseError ->
+            "This plan isn't available right now. Please try again later."
+        PurchasesErrorCode.ProductAlreadyPurchasedError ->
+            "You already own this plan. Tap Restore to unlock it."
+        PurchasesErrorCode.ReceiptAlreadyInUseError ->
+            "This purchase is linked to a different account."
+        PurchasesErrorCode.PaymentPendingError ->
+            "Your payment is pending. Pro will unlock as soon as it's approved."
+        PurchasesErrorCode.OperationAlreadyInProgressError ->
+            "A purchase is already in progress. Please wait a moment."
+        // Google Play reports some sheet dismissals (e.g. on the payment-verification step) as
+        // DEVELOPER_ERROR, which RevenueCat maps to PurchaseInvalidError, so keep this neutral.
+        PurchasesErrorCode.PurchaseInvalidError ->
+            "Purchase not completed. Please try again."
+        else ->
+            "Something went wrong. Please try again."
+    }
+
+    private fun restoreErrorMessage(error: PurchasesError): String = when (error.code) {
+        PurchasesErrorCode.NetworkError ->
+            "No internet connection. Please check your connection and try again."
+        PurchasesErrorCode.StoreProblemError ->
+            "Google Play is having trouble right now. Please try again in a moment."
+        PurchasesErrorCode.ReceiptAlreadyInUseError ->
+            "These purchases are linked to a different account."
+        else ->
+            "Couldn't restore purchases. Please try again."
+    }
+
+    private companion object {
+        const val ERROR_VISIBLE_MS = 5_000L
     }
 }

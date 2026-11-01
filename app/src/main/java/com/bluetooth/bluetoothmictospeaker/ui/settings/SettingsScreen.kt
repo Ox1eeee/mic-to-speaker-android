@@ -1,5 +1,7 @@
 package com.bluetooth.bluetoothmictospeaker.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WorkspacePremium
@@ -55,6 +58,8 @@ import com.bluetooth.bluetoothmictospeaker.ui.theme.DarkSurfaceVariant
 import com.bluetooth.bluetoothmictospeaker.ui.theme.GlassBorder
 import com.bluetooth.bluetoothmictospeaker.ui.theme.GlassWhite
 import com.bluetooth.bluetoothmictospeaker.ui.theme.TextSecondary
+
+private const val PRIVACY_POLICY_URL = "https://aztty.com/privacy-policy-15/"
 
 @Composable
 fun SettingsScreen(
@@ -185,13 +190,27 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             SettingsItem(
+                icon = Icons.Default.PrivacyTip,
+                title = "Privacy Policy",
+                subtitle = "How we handle your data",
+                accentColor = AccentCyan,
+                onClick = {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SettingsItem(
                 icon = Icons.Default.Info,
                 title = "About",
                 subtitle = "LiveMic v" + runCatching {
                     context.packageManager.getPackageInfo(context.packageName, 0).versionName
                 }.getOrNull().orEmpty(),
                 accentColor = AccentPurple,
-                onClick = { }
+                onClick = null
             )
         }
     }
@@ -300,7 +319,7 @@ private fun SettingsItem(
     title: String,
     subtitle: String,
     accentColor: Color,
-    onClick: () -> Unit
+    onClick: (() -> Unit)?
 ) {
     Box(
         modifier = Modifier
@@ -308,7 +327,7 @@ private fun SettingsItem(
             .clip(RoundedCornerShape(14.dp))
             .background(GlassWhite)
             .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

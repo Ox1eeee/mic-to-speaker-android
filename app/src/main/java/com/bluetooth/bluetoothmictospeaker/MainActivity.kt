@@ -14,7 +14,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -45,7 +44,6 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     companion object {
-        private const val FREE_LAUNCH_LIMIT = 3
         private const val REVIEW_PROMPT_DELAY_MS = 600L
     }
 
@@ -56,7 +54,6 @@ class MainActivity : ComponentActivity() {
     private var showSettings by mutableStateOf(false)
     private var showPaywall by mutableStateOf(false)
     private var hasShownPaywallThisSession by mutableStateOf(false)
-    private var launchCount by mutableIntStateOf(0)
 
     private lateinit var preferencesManager: PreferencesManager
     private lateinit var ratingManager: RatingManager
@@ -81,7 +78,6 @@ class MainActivity : ComponentActivity() {
         // Track launch count
         lifecycleScope.launch {
             preferencesManager.incrementLaunchCount()
-            launchCount = preferencesManager.launchCount.first()
         }
 
         // In-app review: ask after a real mic session ends (see RatingManager for the strategy)
@@ -149,7 +145,6 @@ class MainActivity : ComponentActivity() {
                         showPaywall -> {
                             PaywallScreen(
                                 subscriptionViewModel = subscriptionViewModel,
-                                dismissable = launchCount <= FREE_LAUNCH_LIMIT,
                                 onDismiss = {
                                     InterstitialAdManager.trackActionAndShowAd(this@MainActivity, isPro = isPro) {
                                         showPaywall = false
