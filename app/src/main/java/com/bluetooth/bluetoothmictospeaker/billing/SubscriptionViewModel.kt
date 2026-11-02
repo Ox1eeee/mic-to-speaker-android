@@ -7,6 +7,10 @@ import androidx.lifecycle.viewModelScope
 import com.revenuecat.purchases.Package
 import com.revenuecat.purchases.PurchasesError
 import com.revenuecat.purchases.PurchasesErrorCode
+import com.revenuecat.purchases.models.Period
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +24,12 @@ data class SubscriptionUiState(
     val lifetimePackage: Package? = null,
     val weeklyPrice: String = "",
     val lifetimePrice: String = "",
+    /** e.g. "3-day"; null when the user isn't eligible for a free trial. */
+    val weeklyTrialLength: String? = null,
+    /** Date the free trial ends if started today, e.g. "5 Nov 2026". */
+    val weeklyTrialEndDate: String? = null,
+    /** Renewal period of the weekly plan, e.g. "week". */
+    val weeklyPeriod: String = "week",
     val selectedPlan: Int = 0, // 0 = weekly, 1 = lifetime
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
@@ -63,14 +73,49 @@ class SubscriptionViewModel(application: Application) : AndroidViewModel(applica
         val weekly = RevenueCatManager.getWeeklyPackage()
         val lifetime = RevenueCatManager.getLifetimePackage()
 
+        // The default option is what RevenueCat purchases; it only contains a free phase
+        // when Google Play says this user is eligible for the trial.
+        val option = weekly?.product?.defaultOption
+        val trialPeriod = option?.freePhase?.billingPeriod
+        val fullPrice = option?.fullPricePhase
+
         _uiState.value = _uiState.value.copy(
             isPro = RevenueCatManager.isPro.value,
             weeklyPackage = weekly,
             lifetimePackage = lifetime,
-            weeklyPrice = weekly?.product?.price?.formatted ?: "",
+            weeklyPrice = fullPrice?.price?.formatted ?: weekly?.product?.price?.formatted ?: "",
             lifetimePrice = lifetime?.product?.price?.formatted ?: "",
+            weeklyTrialLength = trialPeriod?.let(::trialLengthLabel),
+            weeklyTrialEndDate = trialPeriod?.let(::trialEndDate),
+            weeklyPeriod = (fullPrice?.billingPeriod ?: weekly?.product?.period)?.let(::periodLabel) ?: "week",
             isLoading = false
         )
+    }
+
+    private fun Period.Unit.singular() = when (this) {
+        Period.Unit.DAY -> "day"
+        Period.Unit.WEEK -> "week"
+        Period.Unit.MONTH -> "month"
+        Period.Unit.YEAR -> "year"
+        Period.Unit.UNKNOWN -> "period"
+    }
+
+    /** "3-day", "1-week", ... */
+    private fun trialLengthLabel(period: Period) = "${period.value}-${period.unit.singular()}"
+
+    /** "week", "2 weeks", ... */
+    private fun periodLabel(period: Period) =
+        if (period.value == 1) period.unit.singular() else "${period.value} ${period.unit.singular()}s"
+
+    private fun trialEndDate(period: Period): String {
+        val today = LocalDate.now()
+        val end = when (period.unit) {
+            Period.Unit.DAY, Period.Unit.UNKNOWN -> today.plusDays(period.value.toLong())
+            Period.Unit.WEEK -> today.plusWeeks(period.value.toLong())
+            Period.Unit.MONTH -> today.plusMonths(period.value.toLong())
+            Period.Unit.YEAR -> today.plusYears(period.value.toLong())
+        }
+        return end.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
     }
 
     fun selectPlan(plan: Int) {

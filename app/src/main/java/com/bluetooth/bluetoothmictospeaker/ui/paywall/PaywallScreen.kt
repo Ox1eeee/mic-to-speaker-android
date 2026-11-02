@@ -55,6 +55,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextDecoration
+import com.bluetooth.bluetoothmictospeaker.billing.RevenueCatManager
 import com.bluetooth.bluetoothmictospeaker.billing.SubscriptionViewModel
 import com.bluetooth.bluetoothmictospeaker.ui.theme.AccentCyan
 import com.bluetooth.bluetoothmictospeaker.ui.theme.DarkBackground
@@ -75,6 +77,11 @@ fun PaywallScreen(
     val state by subscriptionViewModel.uiState.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+    val trial = state.weeklyTrialLength // e.g. "3-day", null if not eligible
+    val trialDuration = trial?.let { // "3 days"
+        val (count, unit) = it.split("-")
+        if (count == "1") "1 $unit" else "$count ${unit}s"
+    }
 
     Box(
         modifier = modifier
@@ -180,10 +187,11 @@ fun PaywallScreen(
             // Weekly Plan Card
             PlanCard(
                 title = "Weekly Plan",
-                priceText = if (state.weeklyPrice.isNotEmpty())
-                    "${state.weeklyPrice} per week after 3-day trial"
-                else
-                    "per week after 3-day trial",
+                priceText = when {
+                    state.weeklyPrice.isEmpty() -> "Auto-renewing subscription"
+                    trial != null -> "$trialDuration free, then ${state.weeklyPrice}/${state.weeklyPeriod}"
+                    else -> "${state.weeklyPrice}/${state.weeklyPeriod}, auto-renews"
+                },
                 badge = null,
                 isSelected = state.selectedPlan == 0,
                 onClick = { subscriptionViewModel.selectPlan(0) }
@@ -225,12 +233,56 @@ fun PaywallScreen(
                     )
                 } else {
                     Text(
-                        text = if (state.selectedPlan == 0) "Try for Free" else "Get Lifetime Access",
+                        text = if (state.selectedPlan == 1) "Get Lifetime Access" else "Try for Free",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Offer terms (Google Play Subscriptions policy): trial length, end date,
+            // price after the trial, auto-renewal and how to cancel.
+            val terms = when {
+                state.selectedPlan == 1 -> state.lifetimePrice.takeIf { it.isNotEmpty() }?.let {
+                    "One-time payment of $it. This is not a subscription and you won't be charged again."
+                }
+                state.weeklyPrice.isEmpty() -> null
+                trial != null ->
+                    "Your $trial free trial starts today and ends on ${state.weeklyTrialEndDate}. " +
+                        "After the trial, you'll be charged ${state.weeklyPrice} every ${state.weeklyPeriod} " +
+                        "until you cancel. Cancel anytime before ${state.weeklyTrialEndDate} in Google Play " +
+                        "› Payments & subscriptions › Subscriptions and you won't be charged."
+                else ->
+                    "You'll be charged ${state.weeklyPrice} today and every ${state.weeklyPeriod} after that " +
+                        "until you cancel. Cancel anytime in Google Play › Payments & subscriptions › Subscriptions."
+            }
+            terms?.let {
+                Text(
+                    text = it,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (state.selectedPlan == 0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "How to cancel",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PaywallBlueBright,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier.clickable {
+                        val url = "https://play.google.com/store/account/subscriptions" +
+                            "?sku=${RevenueCatManager.WEEKLY_PRODUCT_ID}&package=${context.packageName}"
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -364,11 +416,12 @@ private fun PlanCard(
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
-                        modifier = Modifier.weight(1f, fill = false)
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.weight(1f)
                     )
                     if (badge != null) {
                         Spacer(modifier = Modifier.width(10.dp))
-                        Spacer(modifier = Modifier.weight(1f))
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
